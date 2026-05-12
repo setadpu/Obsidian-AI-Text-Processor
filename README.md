@@ -45,6 +45,7 @@ ollama run llama3.2
 If you downloaded this plugin from GitHub, copy it to your .obsidian/plugins, don't forget to run npm install within the plugins directory (if Powershell is giving you a hard time, use Command Prompt).
 
 ```
+
 npm install
 
 ```
