@@ -16,11 +16,6 @@ cd Obsidian-AI-Text-Processor
 npm install
 npm run build
 
-open Obsidian app
-enable community plugin support
-enable LLM plugin
-type a model within the plugin settings tab
-
 ```
 
 Ensure that you have Ollama installed.
