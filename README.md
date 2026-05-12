@@ -2,11 +2,11 @@
 
 Lets you use local LLMs in your Obsidian Vault; edit your stories line by line, or create entirely new prediction texts based on context.
 
-This plugin was developed to make an intuitive experience with Local LLM models, all within Obsidian.
+This plugin was developed to make an intuitive writing and editing experience with Local LLM models, all within Obsidian.
 
 ## In order to use the plugin
 
--  Clone the plugin into your plugins folder
+Clone the plugin into your plugins folder
 
 ```
 
@@ -23,7 +23,7 @@ type a model within the plugin settings tab
 
 ```
 
--   Ensure that you have Ollama installed
+Ensure that you have Ollama installed
 
 ```
 
@@ -32,7 +32,7 @@ https://ollama.com/download
 ```
 
 
--   Ensure that the Ollama model you want to use is running in the background
+Ensure that the Ollama model you want to use is running in the background
 
 ```
 
@@ -42,14 +42,14 @@ ollama run llama3.2
 
 ```
 
--   If you downloaded this plugin from GitHub, copy it to your .obsidian/plugins, don't forget to run npm install within the plugins directory (if Powershell is giving you a hard time, use Command Prompt).
+If you downloaded this plugin from GitHub, copy it to your .obsidian/plugins, don't forget to run npm install within the plugins directory (if Powershell is giving you a hard time, use Command Prompt).
 
 ```
 npm install
 
 ```
 
-to install all dependencies.
+To install all dependencies.
 
 -   Ensure that the plugin is activated
 -   Choose the right endpoint and model in plugins settings
@@ -61,6 +61,6 @@ to install all dependencies.
 
 An overlay with replacement options (text from LLM) will be available.
 
-### Recommendations
+### Recommendation
 
 Use https://www.canirun.ai/ to determine which AI model is best for you, (Aim for at least 60-80 token/s).
