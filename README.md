@@ -8,7 +8,7 @@ Lets you use local LLMs in your Obsidian Vault; edit your stories line by line, 
 
 This plugin was developed to make an intuitive writing and editing experience with Local LLM models, all within Obsidian.
 
-## In order to use the plugin
+## Usage Instructions
 
 Clone the plugin into your plugins folder.
 
