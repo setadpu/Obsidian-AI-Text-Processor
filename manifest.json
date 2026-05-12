@@ -1,0 +1,10 @@
+{
+  "id": "ollama-text-processor",
+  "name": "Ollama Text Processor",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "Process text sentence-by-sentence using local Ollama models with custom prompts.",
+  "author": "setadpu",
+  "authorUrl": "https://github.com/setadpu",
+  "isDesktopOnly": true
+}
