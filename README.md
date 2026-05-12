@@ -56,6 +56,10 @@ Once you have successfuly installed:
 -   Ensure that the plugin is activated.
 -   Set your keybind for quick usage.
 -   Choose the right endpoint and model in plugins settings.
+
+<img width="688" height="509" alt="PluginSettings" src="https://github.com/user-attachments/assets/d0265146-429f-4505-a2b0-e6f8ce5bb472" />
+
+  
 -   Select the text with your mouse.
 -   Right click after highlighting of text (or text cursor positioned inside the sentence) and choose process text.
 -   Select custom prompt checkboxes, one click for individual ai response, two clicks for combined prompt response.
