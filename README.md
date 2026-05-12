@@ -2,6 +2,10 @@
 
 Lets you use local LLMs in your Obsidian Vault; edit your stories line by line, or create entirely new prediction texts based on context.
 
+<img width="422" height="514" alt="Sample_Process" src="https://github.com/user-attachments/assets/f444d8f1-685e-4e94-994e-8eb716f447ba" />
+
+<img width="316" height="292" alt="Sample_Prediction" src="https://github.com/user-attachments/assets/56710e07-0f87-4e42-a56e-6e9dc2217cad" />
+
 This plugin was developed to make an intuitive writing and editing experience with Local LLM models, all within Obsidian.
 
 ## In order to use the plugin
