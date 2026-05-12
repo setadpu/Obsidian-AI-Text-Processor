@@ -6,7 +6,7 @@ This plugin was developed to make an intuitive writing and editing experience wi
 
 ## In order to use the plugin
 
-Clone the plugin into your plugins folder
+Clone the plugin into your plugins folder.
 
 ```
 
@@ -23,7 +23,7 @@ type a model within the plugin settings tab
 
 ```
 
-Ensure that you have Ollama installed
+Ensure that you have Ollama installed.
 
 ```
 
@@ -32,7 +32,7 @@ https://ollama.com/download
 ```
 
 
-Ensure that the Ollama model you want to use is running in the background
+Ensure that the Ollama model you want to use is running in the background.
 
 ```
 
@@ -47,13 +47,16 @@ If you downloaded this plugin from GitHub, copy it to your .obsidian/plugins, do
 ```
 
 npm install
+npm run build
+
 
 ```
 
-To install all dependencies.
+Once you have successfuly installed:
 
--   Ensure that the plugin is activated
--   Choose the right endpoint and model in plugins settings
+-   Ensure that the plugin is activated.
+-   Set your keybind for quick usage.
+-   Choose the right endpoint and model in plugins settings.
 -   Select the text with your mouse.
 -   Right click after highlighting of text (or text cursor positioned inside the sentence) and choose process text.
 -   Select custom prompt checkboxes, one click for individual ai response, two clicks for combined prompt response.
