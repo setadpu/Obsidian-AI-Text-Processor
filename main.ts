@@ -230,31 +230,32 @@ const PROMPT_INFO: Record<string, { description: string; example: string }> = {
 function calcDropdownTop(
   lineRect: DOMRect,
   editorRect: DOMRect,
-  estimatedHeight: number
+  estimatedHeight: number,
+  scrollTop: number = 0
 ): string {
   const GAP = 8;
 
-  // Ideal position: just below the anchor line
-  const idealTop    = lineRect.bottom - editorRect.top + GAP;
+  // Ideal position: just below the anchor line, accounting for scroll offset.
+  // lineRect.bottom - editorRect.top gives the viewport-relative offset;
+  // adding scrollTop converts it into the absolute position within the scrolled container.
+  const idealTop    = lineRect.bottom - editorRect.top + GAP + scrollTop;
   const idealBottom = idealTop + estimatedHeight;
 
   // How far the dropdown bleeds past the visible editor bottom
-  const overflow = idealBottom - editorRect.height;
+  const overflow = idealBottom - (editorRect.height + scrollTop);
 
   if (overflow <= 0) {
-    // Fits cleanly below — no adjustment needed
     return `${idealTop}px`;
   }
 
-  // Try to clamp upward by the overflow amount
   const clampedTop = idealTop - overflow;
 
   // Floor: never go above the bottom of the anchor line itself
-  // (prevents the dropdown from covering the text being processed)
-  const floor = lineRect.bottom - editorRect.top + GAP;
+  const floor = lineRect.bottom - editorRect.top + GAP + scrollTop;
 
   return `${Math.max(clampedTop, floor)}px`;
 }
+
 function extractTaggedVariants(raw: string, count: number): string[] {
   // Pass 1: strict [V1]...[/V1] matching
   const strict: string[] = [];
@@ -408,14 +409,11 @@ export default class OllamaTextProcessorPlugin extends Plugin {
   this.addSettingTab(new OllamaSettingTab(this.app, this));
 
   // ── Context-menu registration (existing) ──────────────────────────────
-  this.registerEvent(
-    this.app.workspace.on(
-      "editor-menu",
-      (menu: Menu, editor: Editor, _view: MarkdownView) => {
+      this.registerEvent(
+      (this.app.workspace as any).on("editor-menu", (menu: Menu, editor: Editor, view: MarkdownView) => {
         this.buildMenuItem(menu, editor);
-      }
-    )
-  );
+      })
+    );
 
   // ── Hotkey command (ADD THIS BLOCK) ───────────────────────────────────
   this.addCommand({
@@ -472,12 +470,30 @@ private async runAtCursor(editor: Editor): Promise<void> {
     }
 
     if (!foundSentence) {
-      if (lineText.trim().length > 0) {
-        captureMode      = "predict-next";
-        targetText       = lineText.trim();
-        rangeStart       = { line: cursor.line, ch: lineText.length };
-        rangeEnd         = { line: cursor.line, ch: lineText.length };
-        paragraphContext  = getPrecedingContext(editor, cursor.line, lineText.length);
+                if (lineText.trim().length > 0) {
+          // Find the last terminal punctuation on the line and take only what follows it
+          const lastPunctMatch = lineText.match(/[.!?]['"'"]?\s+/g);
+          const lastPunctIdx = lastPunctMatch
+            ? lineText.lastIndexOf(lastPunctMatch[lastPunctMatch.length - 1])
+              + lastPunctMatch[lastPunctMatch.length - 1].length
+            : 0;
+          const fragment = lineText.slice(lastPunctIdx).trim();
+          const fragmentStart = lastPunctIdx + (lineText.slice(lastPunctIdx).length - lineText.slice(lastPunctIdx).trimStart().length);
+
+          targetText = fragment.length > 0 ? fragment : lineText.trim();
+          const effectiveStart = fragment.length > 0 ? fragmentStart : (lineText.length - lineText.trimStart().length);
+
+          if (isFragment(targetText)) {
+            captureMode      = "finish-fragment";
+            rangeStart       = { line: cursor.line, ch: effectiveStart };
+            rangeEnd         = { line: cursor.line, ch: lineText.length };
+            paragraphContext  = getPrecedingContext(editor, cursor.line, effectiveStart);
+          } else {
+            captureMode      = "predict-next";
+            rangeStart       = { line: cursor.line, ch: lineText.length };
+            rangeEnd         = { line: cursor.line, ch: lineText.length };
+            paragraphContext  = getPrecedingContext(editor, cursor.line, lineText.length);
+          }
       } else {
         let prevLine = cursor.line - 1;
         while (prevLine > 0 && editor.getLine(prevLine).trim() === "") prevLine--;
@@ -661,7 +677,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
     return;
   }
 
-  this.showInlineSuggestions(editor, rangeStart, rangeEnd, targetText, candidates);
+  this.showInlineSuggestions(editor, rangeStart, rangeEnd, targetText, candidates, captureMode);
 }
   // ── Menu item construction ──────────────────────────────────────────────
 
@@ -717,12 +733,30 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
       if (!foundSentence) {
         // Cursor is past the last punctuation on the line, or on a blank line
-        if (lineText.trim().length > 0) {
-          captureMode      = "predict-next";
-          targetText       = lineText.trim();
-          rangeStart       = { line: cursor.line, ch: lineText.length };
-          rangeEnd         = { line: cursor.line, ch: lineText.length };
-          paragraphContext  = getPrecedingContext(editor, cursor.line, lineText.length);
+                if (lineText.trim().length > 0) {
+          // Find the last terminal punctuation on the line and take only what follows it
+          const lastPunctMatch = lineText.match(/[.!?]['"'"]?\s+/g);
+          const lastPunctIdx = lastPunctMatch
+            ? lineText.lastIndexOf(lastPunctMatch[lastPunctMatch.length - 1])
+              + lastPunctMatch[lastPunctMatch.length - 1].length
+            : 0;
+          const fragment = lineText.slice(lastPunctIdx).trim();
+          const fragmentStart = lastPunctIdx + (lineText.slice(lastPunctIdx).length - lineText.slice(lastPunctIdx).trimStart().length);
+
+          targetText = fragment.length > 0 ? fragment : lineText.trim();
+          const effectiveStart = fragment.length > 0 ? fragmentStart : (lineText.length - lineText.trimStart().length);
+
+          if (isFragment(targetText)) {
+            captureMode      = "finish-fragment";
+            rangeStart       = { line: cursor.line, ch: effectiveStart };
+            rangeEnd         = { line: cursor.line, ch: lineText.length };
+            paragraphContext  = getPrecedingContext(editor, cursor.line, effectiveStart);
+          } else {
+            captureMode      = "predict-next";
+            rangeStart       = { line: cursor.line, ch: lineText.length };
+            rangeEnd         = { line: cursor.line, ch: lineText.length };
+            paragraphContext  = getPrecedingContext(editor, cursor.line, lineText.length);
+          }
         } else {
           // Blank line: walk back to find last non-empty line
           let prevLine = cursor.line - 1;
@@ -762,9 +796,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
       item
         .setTitle(menuTitle)
         .setIcon("bot-message-square")
-        .onClick(() => this.handleMenuClick(
-          editor, capText, capMode, capStart, capEnd, capContext, capTruncated
-        ));
+        .onClick(() => this.handleMenuClick(editor, capText, capMode, capStart, capEnd, capContext, capTruncated, true));
     });
   }
 
@@ -777,7 +809,8 @@ private async runAtCursor(editor: Editor): Promise<void> {
     capStart: { line: number; ch: number },
     capEnd:   { line: number; ch: number },
     capContext: string,
-    capTruncated: boolean
+    capTruncated: boolean,
+    showModal = false
   ): Promise<void> {
 
     if (capTruncated) {
@@ -789,8 +822,8 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
     const maxSent = this.settings.maxOutputSentences;
 
-    // ── Predict / Finish ──────────────────────────────────────────────────
-    if (capMode === "predict-next" || capMode === "finish-fragment") {
+    // Predict / Finish — auto-run unless triggered from menu (showModal = true)
+    if ((capMode === "predict-next" || capMode === "finish-fragment") && !showModal) {
       const count = this.settings.variationsMode
         ? this.settings.variationsCount
         : DEFAULT_PREDICT_COUNT;
@@ -821,39 +854,47 @@ private async runAtCursor(editor: Editor): Promise<void> {
         } else {
           const limitClause = sentenceLimitClause(maxSent, "finish");
           prompt =
-            `You are a writing assistant. Below is an unfinished sentence,\n` +
-            `followed by the passage that precedes it for context.\n` +
-            `Complete the unfinished sentence.\n` +
-            `Produce exactly ${count} different completions.\n` +
+            `You are a writing assistant. Complete the unfinished sentence fragment below into a full, natural sentence.\n\n` +
+            `Rules:\n` +
+            `- Output the COMPLETE sentence from start to finish.\n` +
+            `- The sentence MUST begin with the exact characters of the fragment, unchanged.\n` +
+            `- Do NOT alter, rephrase, or skip any part of the fragment.\n` +
+            `- Simply continue the fragment naturally until the sentence is complete.\n\n` +
+            `Examples:\n` +
+            `- Fragment: "His savings wer" → output: "His savings were dwindling fast."\n` +
+            `- Fragment: "I want to " → output: "I want to break free."\n` +
+            `- Fragment: "She wal" → output: "She walked into the room."\n\n` +
+            `Produce exactly ${count} different completed sentences.\n` +
             (limitClause ? `${limitClause}\n` : "") +
-            `Each completion begins exactly where the fragment ends and finishes the sentence naturally.\n` +
-            `Do NOT repeat the fragment — output only the words that come after it.\n` +
-            `Wrap each option in tags:\n` +
-            `[V1]completion here[/V1]\n[V2]completion here[/V2]\n` +
+            `Wrap each in tags:\n` +
+            `[V1]full sentence here[/V1]\n[V2]full sentence here[/V2]\n` +
             `...and so on up to [V${count}].\n` +
-            `Output ONLY the tagged completions. No explanation. No text outside the tags.\n\n` +
-            `Unfinished sentence: "${capText}"\n\n` +
+            `Output ONLY the tagged sentences. No explanation. No text outside the tags.\n\n` +
+            `Fragment: "${capText}"\n\n` +
             `Preceding context:\n${capContext}`;
         }
 
         const raw      = await this.callOllama(prompt);
         const variants = extractTaggedVariants(raw, count);
 
+        const ensureTerminated = (t: string): string => {
+          const s = t.trim();
+          if (s.length === 0) return s;
+          const last = s[s.length - 1];
+          return /[.!?]/.test(last) ? s : s + ".";
+        };
+
         const candidates: OutputCandidate[] = variants.length > 0
           ? variants.map((v, i) => ({
-              text: capMode === "predict-next" ? " " + v : capText + v,
-              sourceNames: [
-                capMode === "predict-next" ? `${i + 1}` : `Completion ${i + 1}`
-              ]
+              text: ensureTerminated(v),
+              sourceNames: [capMode === "predict-next" ? `${i + 1}` : `Completion ${i + 1}`],
             }))
           : [{
-              text: capMode === "predict-next"
-                ? " " + raw.trim()
-                : capText + " " + raw.trim(),
-              sourceNames: ["AI suggestion"]
+              text: ensureTerminated(raw),
+              sourceNames: ["AI suggestion"],
             }];
 
-        this.showInlineSuggestions(editor, capStart, capEnd, capText, candidates);
+            this.showInlineSuggestions(editor, capStart, capEnd, capText, candidates, capMode);
 
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -992,7 +1033,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
           return;
         }
 
-        this.showInlineSuggestions(editor, capStart, capEnd, capText, candidates);
+        this.showInlineSuggestions(editor, capStart, capEnd, capText, candidates, capMode)
       }
     ).open();
   }
@@ -1079,10 +1120,34 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
     return json.response.trim();
   }
+  
+  private debugMode = false; // set to false to disable debug logging
+  private logDump: string[] = [];
 
+  private dumpLog(msg: string): void {
+    if (!this.debugMode) return;
+    const line = `${new Date().toISOString()} ${msg}`;
+    console.log(line);
+    this.logDump.push(line);
+  }
+
+  private async flushLogDump(): Promise<void> {
+    if (!this.debugMode) return;
+    if (this.logDump.length === 0) return;
+    const content = this.logDump.join("\n");
+    this.logDump = [];
+    const path = "ollama-debug.md";
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing) {
+      await this.app.vault.modify(existing as import("obsidian").TFile, content);
+    } else {
+      await this.app.vault.create(path, content);
+    }
+    new Notice("Debug log written to ollama-debug.md");
+  }
   // ── Loading spinner ─────────────────────────────────────────────────────
 
-  showLoadingSpinner(
+    showLoadingSpinner(
     editor: Editor,
     anchorLine: { line: number; ch: number },
     label = "Thinking…"
@@ -1097,10 +1162,11 @@ private async runAtCursor(editor: Editor): Promise<void> {
     const lineEl = lines[Math.min(anchorLine.line, lines.length - 1)] as HTMLElement | null;
     if (!lineEl) return () => {};
 
-    if (getComputedStyle(cmEditor).position === "static") cmEditor.style.position = "relative";
+    const lineRect = lineEl.getBoundingClientRect();
 
-    const lineRect   = lineEl.getBoundingClientRect();
-    const editorRect = cmEditor.getBoundingClientRect();
+    this.dumpLog(`[OllamaSpinner] anchorLine.line: ${anchorLine.line}`);
+    this.dumpLog(`[OllamaSpinner] lineRect: ${JSON.stringify({ top: lineRect.top, bottom: lineRect.bottom, left: lineRect.left })}`);
+    void this.flushLogDump();
 
     const spinnerStyle = document.createElement("style");
     spinnerStyle.textContent = `
@@ -1117,9 +1183,9 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
     const overlay = document.createElement("div");
     overlay.style.cssText = `
-      position:absolute;
-      left:${lineRect.left - editorRect.left}px;
-      top:${calcDropdownTop(lineRect, editorRect, 40)}px
+      position:fixed;
+      left:${lineRect.left}px;
+      top:${lineRect.bottom + 16}px;
       display:flex; align-items:center; gap:0.5em;
       padding:0.35em 0.75em;
       background:rgba(255,255,255,0.93);
@@ -1127,7 +1193,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
       border-radius:4px;
       box-shadow:0 2px 8px rgba(0,0,0,0.25);
       font-size:0.82em; color:var(--text-muted);
-      z-index:101; cursor:move; user-select:none; white-space:nowrap;
+      z-index:9999; cursor:move; user-select:none; white-space:nowrap;
     `;
 
     const ring    = document.createElement("div");
@@ -1151,7 +1217,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
     const onUp = () => { dragging = false; };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-    cmEditor.appendChild(overlay);
+    document.body.appendChild(overlay);
 
     return () => {
       overlay.remove();
@@ -1163,20 +1229,22 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
   // ── Inline suggestions dropdown ─────────────────────────────────────────
 
-  private showInlineSuggestions(
+    private showInlineSuggestions(
     editor: Editor,
     start: { line: number; ch: number },
     end:   { line: number; ch: number },
     _originalText: string,
-    candidates: OutputCandidate[]
+    candidates: OutputCandidate[],
+    capMode: CaptureMode = "sentence"
   ): void {
-    if (this.activeDropdown) {
-      this.activeDropdown.remove();
-      this.activeDropdown = null;
-    }
+    // For predict-next there is no original text — insertion goes into empty space
+    // For all other modes use the passed-in originalText (the fragment/selection being replaced)
+    _originalText = capMode === "predict-next" ? "" : _originalText;
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) {
+      this.dumpLog(`[OllamaDropdown] FALLBACK: no view`);
+      void this.flushLogDump();
       editor.replaceRange(candidates[0].text, start, end);
       new Notice("Applied first AI output (no view). (FALLBACK)");
       return;
@@ -1184,6 +1252,8 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
     const cmEditor = view.contentEl.querySelector(".cm-editor") as HTMLElement | null;
     if (!cmEditor) {
+      this.dumpLog(`[OllamaDropdown] FALLBACK: no cmEditor`);
+      void this.flushLogDump();
       editor.replaceRange(candidates[0].text, start, end);
       new Notice("Applied first AI output (no editor). (FALLBACK)");
       return;
@@ -1191,30 +1261,64 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
     const lines = cmEditor.querySelectorAll(".cm-line");
     if (start.line < 0 || start.line >= lines.length) {
+      this.dumpLog(`[OllamaDropdown] FALLBACK: line out of range, start.line: ${start.line} lines.length: ${lines.length}`);
+      void this.flushLogDump();
       editor.replaceRange(candidates[0].text, start, end);
       new Notice("Applied first AI output (line out of range). (FALLBACK)");
       return;
     }
 
-    const lineEl = lines[start.line] as HTMLElement;
-    if (getComputedStyle(cmEditor).position === "static") cmEditor.style.position = "relative";
+    const lineEl   = lines[start.line] as HTMLElement;
+    const lineRect = lineEl.getBoundingClientRect();
 
-    const lineRect   = lineEl.getBoundingClientRect();
-    const editorRect = cmEditor.getBoundingClientRect();
+    // Find the longest candidate and compute where its insertion ends,
+    // then use that line's bottom as the dropdown anchor
+        // Position dropdown below the longest candidate — computed after calcInsertion/calcEndAfterInsertion are defined below
+    // Use inline calculation here since functions aren't defined yet at this point
+    const calcInsertion = (text: string): string => {
+      if (_originalText !== "" && text.toLowerCase().startsWith(_originalText.toLowerCase().trimEnd())) {
+        return text;
+      }
+      const lineText   = editor.getLine(start.line);
+      const charBefore = start.ch > 0 ? lineText[start.ch - 1] : "";
+      const firstChar  = text[0] ?? "";
+      const midWord    = /[a-zA-Z0-9]/.test(charBefore);
+      if (midWord && firstChar === " ")                                                           return text.trimStart();
+      if (charBefore === " " && firstChar === " ")                                                return text.trimStart();
+      if (!midWord && charBefore !== " " && charBefore !== "" && /[a-zA-Z0-9]/.test(firstChar))  return " " + text;
+      return text;
+    };
+
+        const calcEndAfterInsertion = (insertionStart: { line: number; ch: number }, insertion: string): { line: number; ch: number } => {
+      const insertionLines = insertion.split("\n");
+      if (insertionLines.length === 1) {
+        return { line: insertionStart.line, ch: insertionStart.ch + insertion.length };
+      }
+      return { line: insertionStart.line + insertionLines.length - 1, ch: insertionLines[insertionLines.length - 1].length };
+    };
+
+    const longestCandidate = candidates.reduce((a, b) => a.text.length > b.text.length ? a : b);
+    const longestInsertion = calcInsertion(longestCandidate.text);
+    const longestEnd       = calcEndAfterInsertion(start, longestInsertion);
+    const anchorLineIndex  = Math.min(longestEnd.line, lines.length - 1);
+    const anchorLineEl     = lines[anchorLineIndex] as HTMLElement;
+    const anchorRect       = anchorLineEl.getBoundingClientRect();
+
+    this.dumpLog(`[OllamaDropdown] start.line: ${start.line} end.line: ${end.line}`);
+    this.dumpLog(`[OllamaDropdown] lineRect: ${JSON.stringify({ top: lineRect.top, bottom: lineRect.bottom, left: lineRect.left })}`);
+        this.dumpLog(`OllamaDropdown placing at left=${anchorRect.left} top=${anchorRect.bottom + 8}`);
+    void this.flushLogDump();
 
     const dropdown = document.createElement("div");
     dropdown.className = "ollama-output-dropdown";
-    dropdown.style.cssText = `
-      position:absolute;
-      left:${lineRect.left - editorRect.left}px;
-      top:${calcDropdownTop(lineRect, editorRect, 320)}px
+    dropdown.style.cssText = `position:fixed; left:${anchorRect.left}px; top:${anchorRect.bottom + 64}px;
       min-width:220px; max-width:520px;
       max-height:60vh; overflow-y:auto;
       background:var(--background-primary,rgba(255,255,255,0.96));
       border:1px solid var(--background-modifier-border);
       border-radius:6px;
       box-shadow:0 4px 16px rgba(0,0,0,0.3);
-      z-index:100; font-size:0.85em;
+      z-index:9999; font-size:0.85em;
     `;
 
     this.activeDropdown = dropdown;
@@ -1250,10 +1354,79 @@ private async runAtCursor(editor: Editor): Promise<void> {
       window.removeEventListener("mouseup", onDragEnd);
     };
 
-    const apply = (text: string) => {
-      editor.replaceRange(text, start, end);
+        const apply = (text: string) => {
+      // For finish-fragment the model outputs the full sentence — replace start→end directly
+      // For all other modes use spacing logic to join the insertion cleanly
+      if (_originalText !== "" && text.toLowerCase().startsWith(_originalText.toLowerCase().trimEnd())) {
+        editor.replaceRange(text, start, end);
+        dropdown.remove();
+        cleanup();
+        return;
+      }
+
+      const line      = editor.getLine(start.line);
+      const charBefore = start.ch > 0 ? line[start.ch - 1] : "";
+      const firstChar  = text[0] ?? "";
+      const midWord     = /[a-zA-Z0-9]/.test(charBefore);
+      const startsAlpha = /[a-zA-Z0-9]/.test(firstChar);
+
+      let insertion = text;
+
+      if (midWord && firstChar === " ") {
+        insertion = text.trimStart();
+      } else if (charBefore === " " && firstChar === " ") {
+        insertion = text.trimStart();
+      } else if (!midWord && charBefore !== " " && charBefore !== "" && startsAlpha) {
+        insertion = " " + text;
+      }
+
+      editor.replaceRange(insertion, start, end);
       dropdown.remove();
       cleanup();
+    };
+
+        // Track whether a preview is currently active in the document
+    let previewActive = false;
+    let previewEnd    = { line: end.line, ch: end.ch };
+    const originalEnd = { line: end.line, ch: end.ch };
+
+        const previewText = (text: string) => {
+      this.dumpLog(`[Preview] previewText called, previewActive: ${previewActive}`);
+      this.dumpLog(`[Preview] start: ${JSON.stringify(start)} previewEnd: ${JSON.stringify(previewEnd)} originalEnd: ${JSON.stringify(originalEnd)}`);
+      if (previewActive) {
+        this.dumpLog(`[Preview] restoring before new preview, replacing start→previewEnd with originalText: "${_originalText}"`);
+        editor.replaceRange(_originalText, start, previewEnd);
+        previewActive = false;
+        previewEnd = { line: originalEnd.line, ch: originalEnd.ch };
+        this.dumpLog(`[Preview] restored, previewEnd reset to: ${JSON.stringify(previewEnd)}`);
+      }
+      const insertion = calcInsertion(text);
+      this.dumpLog(`[Preview] inserting: "${insertion}" at start: ${JSON.stringify(start)} replacing up to: ${JSON.stringify(previewEnd)}`);
+      editor.replaceRange(insertion, start, previewEnd);
+      previewActive = true;
+      previewEnd = calcEndAfterInsertion(start, insertion);
+      this.dumpLog(`[Preview] inserted, new previewEnd: ${JSON.stringify(previewEnd)}`);
+      void this.flushLogDump();
+    };
+
+    const restoreOriginal = () => {
+      this.dumpLog(`[Preview] restoreOriginal called, previewActive: ${previewActive}`);
+      this.dumpLog(`[Preview] start: ${JSON.stringify(start)} previewEnd: ${JSON.stringify(previewEnd)} originalText: "${_originalText}"`);
+      if (!previewActive) {
+        this.dumpLog(`[Preview] nothing to restore, returning early`);
+        return;
+      }
+      // Log what is ACTUALLY in the document at start→previewEnd right now
+      const actualInDoc = editor.getRange(start, previewEnd);
+      this.dumpLog(`[Preview] actual text in doc at start→previewEnd: "${actualInDoc}"`);
+      this.dumpLog(`[Preview] actualInDoc.length: ${actualInDoc.length}, previewEnd.ch - start.ch: ${previewEnd.ch - start.ch}`);
+      editor.replaceRange(_originalText, start, previewEnd);
+      previewActive = false;
+      previewEnd = { line: originalEnd.line, ch: originalEnd.ch };
+      this.dumpLog(`[Preview] replaceRange called, checking doc after restore...`);
+      const afterRestore = editor.getRange(start, previewEnd);
+      this.dumpLog(`[Preview] text in doc at start→originalEnd after restore: "${afterRestore}"`);
+      void this.flushLogDump();
     };
 
     candidates.forEach((c, index) => {
@@ -1277,9 +1450,20 @@ private async runAtCursor(editor: Editor): Promise<void> {
       item.appendChild(title);
       item.appendChild(body);
 
-      item.addEventListener("mouseenter", () => { item.style.backgroundColor = "var(--background-modifier-hover)"; });
-      item.addEventListener("mouseleave", () => { item.style.backgroundColor = "transparent"; });
-      item.addEventListener("click", () => apply(c.text));
+      item.addEventListener("mouseenter", () => {
+        item.style.backgroundColor = "var(--background-modifier-hover)";
+        restoreOriginal();
+        previewText(c.text);
+      });
+      item.addEventListener("mouseleave", () => {
+        item.style.backgroundColor = "transparent";
+        restoreOriginal();
+      });
+      item.addEventListener("click", () => {
+        // Preview is already inserted — just confirm it by calling apply with current end
+        restoreOriginal();
+        apply(c.text);
+      });
 
       if (index < candidates.length - 1) {
         const sep = document.createElement("div");
@@ -1303,6 +1487,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
     dismissBtn.addEventListener("mouseenter", () => { dismissBtn.style.backgroundColor = "var(--background-modifier-hover)"; });
     dismissBtn.addEventListener("mouseleave", () => { dismissBtn.style.backgroundColor = "transparent"; });
     dismissBtn.addEventListener("click", () => {
+      restoreOriginal();
       dropdown.remove();
       cleanup();
       new Notice("Dismissed AI outputs. (C0)");
@@ -1312,6 +1497,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
 
     const onKey = (evt: KeyboardEvent) => {
       if (evt.key === "Escape") {
+        restoreOriginal();
         dropdown.remove();
         cleanup();
         new Notice("Dismissed AI outputs. (ESC)");
@@ -1319,7 +1505,7 @@ private async runAtCursor(editor: Editor): Promise<void> {
     };
     window.addEventListener("keydown", onKey, true);
 
-    cmEditor.appendChild(dropdown);
+    document.body.appendChild(dropdown);
   }
 
   // ── Settings ────────────────────────────────────────────────────────────
